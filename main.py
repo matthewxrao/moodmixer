@@ -346,6 +346,7 @@ class FaceScannerApp:
             self.status_label.config(text=text)
 
     def capture_and_analyze(self, frame):
+        cv2.imwrite("captured_face.jpg", frame)
         self.update_status("Analyzing...")
 
         cv2.imwrite("captured_face.jpg", frame) # actually save this
