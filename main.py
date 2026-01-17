@@ -105,8 +105,50 @@ class FaceScannerApp:
         )
         cancel_lbl.pack()
         cancel_lbl.bind("<Button-1>", lambda e: self.cancel_scan())
+    
 
-    def show_making_screen(self, emotion: str, drink_name: str):
+    def show_report_and_user_selection_screen(self, dominant_emotion):
+        # check getting the emotions
+        self._clear_window()
+
+        container = tk.Frame(self.root, bg="#0f0f12")
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        # show all the emotions and confidence levels
+        tk.Label(
+            container,
+            text="MOOD DETECTED",
+            font=("Helvetica", 14),
+            bg="#0f0f12",
+            fg="#666677",
+        ).pack(pady=10)
+
+        tk.Label(
+            container,
+            text=dominant_emotion.upper(),
+            font=("Helvetica", 48, "bold"),
+            bg="#0f0f12",
+            fg="#ffffff",
+        ).pack(pady=20)
+
+        # button to make drink
+
+        make_drink_btn = tk.Label(
+            container,
+            text="MAKE DRINK",
+            font=("Helvetica", 14, "bold"),
+            bg="#ffffff",
+            fg="#0f0f12",
+            padx=40,
+            pady=15,
+            cursor="hand2"
+        )
+
+        make_drink_btn.pack(pady=20)
+        make_drink_btn.bind("<Button-1>", lambda e: self.show_making_screen(dominant_emotion, "Sample Drink"))        
+
+
+    def show_making_screen(self, emotion, drink_name):
         self._clear_window()
 
         container = tk.Frame(self.root, bg="#0f0f12")
@@ -404,6 +446,11 @@ class FaceScannerApp:
         recipe = pumps.RECIPES.get(emotion_upper, pumps.RECIPES.get("HAPPY"))
         drink_name = recipe["name"]
         steps = recipe["steps"]
+
+        # report screen (show all the stats)
+        self.show_report_and_user_selection_screen(emotion_upper)
+
+        # button input for user to start drink making
 
         self.show_making_screen(emotion_upper, drink_name)
     
