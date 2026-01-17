@@ -103,6 +103,61 @@ class FaceScannerApp:
         )
         cancel_lbl.pack()
         cancel_lbl.bind("<Button-1>", lambda e: self.cancel_scan())
+
+    def show_making_screen(self, emotion: str, drink_name: str):
+        self._clear_window()
+
+        container = tk.Frame(self.root, bg="#0f0f12")
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(
+            container,
+            text="MOOD DETECTED",
+            font=("Helvetica", 14),
+            bg="#0f0f12",
+            fg="#666677",
+        ).pack(pady=10)
+
+        tk.Label(
+            container,
+            text=emotion,
+            font=("Helvetica", 44, "bold"),
+            bg="#0f0f12",
+            fg="#00ff88",
+        ).pack(pady=(10, 5))
+
+        tk.Label(
+            container,
+            text=f"Making: {drink_name}",
+            font=("Helvetica", 18, "bold"),
+            bg="#0f0f12",
+            fg="#ffffff",
+        ).pack(pady=(5, 20))
+
+        self.status_label = tk.Label(
+            container,
+            text="Starting...",
+            font=("Helvetica", 14),
+            bg="#0f0f12",
+            fg="#aaaaaa",
+        )
+        self.status_label.pack(pady=10)
+
+        cancel_lbl = tk.Label(
+            container,
+            text="CANCEL",
+            font=("Helvetica", 12, "bold"),
+            bg="#0f0f12",
+            fg="#ff4444",
+            cursor="hand2",
+        )
+
+        cancel_lbl.pack(pady=20)
+        cancel_lbl.bind("<Button-1>", lambda e: self.cancel_scan())
+
+    
+
+
         
     def _clear_window(self):
         for widget in self.root.winfo_children():
