@@ -1,3 +1,4 @@
+from pdb import run
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk, ImageDraw, ImageOps
@@ -6,6 +7,7 @@ import threading
 import time
 import math
 import gpiozero as gz
+from matplotlib import text
 
 import pumps
 
@@ -155,7 +157,48 @@ class FaceScannerApp:
         cancel_lbl.pack(pady=20)
         cancel_lbl.bind("<Button-1>", lambda e: self.cancel_scan())
 
-    
+    def show_done_screen(self, emotion: str, drink_name: str):
+        self._clear_window()
+
+        container = tk.Frame(self.root, bg="#0f0f12")
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        tk.Label(
+            container,
+            text="DONE",
+            font=("Helvetica", 14),
+            bg="#0f0f12",
+            fg="#666677",
+        ).pack(pady=10)
+
+        tk.Label(
+            container,
+            text=drink_name,
+            font=("Helvetica", 34, "bold"),
+            bg="#0f0f12",
+            fg="#00ff88",
+        ).pack(pady=10)
+
+        tk.Label(
+            container,
+            text=f"Mood: {emotion}",
+            font=("Helvetica", 16),
+            bg="#0f0f12",
+            fg="#ffffff",
+        ).pack(pady=10)
+
+        reset_btn = tk.Label(
+            container,
+            text="SCAN AGAIN",
+            font=("Helvetica", 14, "bold"),
+            bg="#ffffff",
+            fg="#0f0f12",
+            padx=40,
+            pady=15,
+            cursor="hand2",
+        )
+        reset_btn.pack(pady=30)
+        reset_btn.bind("<Button-1>", lambda e: self.create_start_screen())
 
 
         
@@ -246,7 +289,7 @@ class FaceScannerApp:
                 status_text = "Searching for face..."
             
             # update ui on main thread so it doesn't crash
-            self.root.after(0, lambda: self.update_status(status_text))
+            self.root.after(0, lambda text=status_text: self.update_status(text))
             
             # prep image for display
             img_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
@@ -343,7 +386,8 @@ class FaceScannerApp:
                 print("="*60 + "\n")
                 
                 # update ui to show we're done
-                self.root.after(0, lambda: self.show_result(sorted_emotions[0][0].upper()))
+                dominant = sorted_emotions[0][0].upper()
+                self.root.after(0, lambda d=dominant: self.start_drink_flow(d))
                 
             except ImportError:
                 print("\nERROR: DeepFace not installed! Run `pip install deepface`\n")
@@ -352,6 +396,30 @@ class FaceScannerApp:
                 self.root.after(0, self.cancel_scan)
 
         threading.Thread(target=analyze, daemon=True).start()
+    
+    def start_drink_flow(self, emotion_upper: str):
+        # choose drink 
+
+        recipe = pumps.RECIPES.get(emotion_upper, pumps.RECIPES.get("HAPPY"))
+        drink_name = recipe["name"]
+        steps = recipe["steps"]
+
+        self.show_making_screen(emotion_upper, drink_name)
+    
+        def status_cb(msg: str):
+            self.root.after(0, lambda: self.update_status(msg))
+    
+        def run_pumps():
+            try:
+                pumps.run_recipe(steps, status=status_cb)
+                self.root.after(0, lambda: self.show_done_screen(emotion_upper, drink_name))
+
+            except Exception as e:
+                print(f"Error running recipe: {str(e)}")
+                self.root.after(0, self.cancel_scan)
+            
+        
+        threading.Thread(target=run_pumps, daemon=True).start()
 
     def show_result(self, emotion):
         self._clear_window()
@@ -399,11 +467,25 @@ class FaceScannerApp:
 
     def cancel_scan(self):
         self.running = False
+
+        try: 
+            pumps.stop_all_pumps()
+        except Exception as e:
+            print(f"Error stopping pumps: {str(e)}")
+            pass
+
         if self.cap:
             self.cap.release()
         self.create_start_screen()
         
     def on_closing(self):
+
+        try: 
+            pumps.stop_all_pumps()
+        except Exception as e:
+            print(f"Error stopping pumps: {str(e)}")
+            pass
+
         self.running = False
         if self.cap:
             self.cap.release()

@@ -36,20 +36,20 @@ def stop_all_pumps():
 
 
 # run a recipe, with status to put on screen
-def run_recipe(steps, status=None):
+def run_recipe(steps, status_cb=None):
     try:
         stop_all_pumps()
 
         for pump_num, secs in steps:
-            if status:
-                status(f"Dispensing: Pump {pump_num} for {secs:.1f}s")
+            if status_cb:
+                status_cb(f"Dispensing: Pump {pump_num} for {secs:.1f}s")
 
             pumps[pump_num].on()
             time.sleep(secs)
             pumps[pump_num].off()
 
-        if status:
-            status("drink ready!")
+        if status_cb:
+            status_cb("drink ready!")
 
     finally:
         stop_all_pumps()
