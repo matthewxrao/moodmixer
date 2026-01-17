@@ -5,6 +5,9 @@ import cv2
 import threading
 import time
 import math
+import gpiozero as gz
+
+import pumps
 
 class FaceScannerApp:
     def __init__(self, root):
@@ -246,6 +249,8 @@ class FaceScannerApp:
 
     def capture_and_analyze(self, frame):
         self.update_status("Analyzing...")
+
+        cv2.imwrite("captured_face.jpg", frame) # actually save this
         
         # freeze the video
         
