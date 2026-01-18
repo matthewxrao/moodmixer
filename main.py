@@ -393,8 +393,25 @@ class FaceScannerApp:
                 break
                 
             frame = cv2.flip(frame, 1)
-            frame_resized = cv2.resize(frame, (self.width, self.height))
-            
+            h, w, _ = frame.shape
+            target_w, target_h = self.width, self.height
+
+            scale = max(target_w / w, target_h / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+
+            frame_resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            start_x = (new_w - target_w) // 2
+            start_y = (new_h - target_h) // 2
+
+            frame_resized = frame_resized[
+                start_y:start_y + target_h,
+                start_x:start_x + target_w
+            ]
+
+
+                        
             # try to find a face
             gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
             faces = self.face_cascade.detectMultiScale(gray, 1.2, 5)
