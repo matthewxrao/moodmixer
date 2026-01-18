@@ -5,9 +5,11 @@ from PIL import Image, ImageTk, ImageDraw, ImageOps
 import cv2
 import threading
 import time
-import math
 import gpiozero as gz
 from matplotlib import text
+import numpy as np
+
+from picamera2 import Picamera2
 
 import serial
 import serial.tools.list_ports
@@ -17,13 +19,13 @@ ARDUINO_BAUD = 115200
 
 
 MOOD_ADVICE = {
-    "HAPPY":   "You’re riding a good wave. Share the energy—text someone you like and do one small thing you’ve been putting off.",
+    "HAPPY":   "You're riding a good wave. Share the energy—text someone you like and do one small thing you've been putting off.",
     "SAD":     "Go easy on yourself today. Drink some water, get a little sunlight if you can, and do one comfort task—music, shower, or a quick walk.",
-    "ANGRY":   "Take 60 seconds to reset—slow breath in/out. Then channel it: move your body or write a quick “what I’m mad about” note.",
-    "FEAR":    "You’re in alert mode. Name 1 thing you can control right now, do it, then take a 2-minute grounding break (look around, feel your feet).",
-    "SURPRISE":"Pause and re-check what happened. If it’s good—enjoy it. If it’s stressful—slow down and get one more piece of info before acting.",
+    "ANGRY":   "Take 60 seconds to reset—slow breath in/out. Then channel it: move your body or write a quick "what I'm mad about" note.",
+    "FEAR":    "You're in alert mode. Name 1 thing you can control right now, do it, then take a 2-minute grounding break (look around, feel your feet).",
+    "SURPRISE":"Pause and re-check what happened. If it's good—enjoy it. If it's stressful—slow down and get one more piece of info before acting.",
     "DISGUST": "That reaction is real. Step away from the trigger and reset—fresh air, water, or switching tasks for a few minutes helps.",
-    "NEUTRAL": "You’re steady. Great time to do something productive—pick one simple task and knock it out clean."
+    "NEUTRAL": "You're steady. Great time to do something productive—pick one simple task and knock it out clean."
 }
 
 class FaceScannerApp:
@@ -33,7 +35,7 @@ class FaceScannerApp:
         self.root.geometry("900x800")
         self.root.configure(bg="#0f0f12")  # dark modern background
         
-        self.cap = None
+        self.picam2 = None
         self.running = False
         self.face_detected = False
         self.detection_start_time = None
@@ -342,7 +344,15 @@ class FaceScannerApp:
 
     def start_scanning(self):
         self.create_scanner_screen()
-        self.cap = cv2.VideoCapture(0)
+        
+        self.picam2 = Picamera2()
+        
+        config = self.picam2.create_preview_configuration(
+            main={"size": (self.width, self.height), "format": "RGB888"}
+        )
+        self.picam2.configure(config)
+        self.picam2.start()
+        
         self.running = True
         self.photo_taken = False
         self.face_detected = False
@@ -388,35 +398,15 @@ class FaceScannerApp:
 
     def update_frame(self):
         while self.running and not self.photo_taken:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-                
-            frame = cv2.flip(frame, 1)
-            h, w, _ = frame.shape
-            target_w, target_h = self.width, self.height
-
-            scale = max(target_w / w, target_h / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-
-            frame_resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-            start_x = (new_w - target_w) // 2
-            start_y = (new_h - target_h) // 2
-
-            frame_resized = frame_resized[
-                start_y:start_y + target_h,
-                start_x:start_x + target_w
-            ]
-
-
-                        
-            # try to find a face
-            gray = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2GRAY)
+            frame = self.picam2.capture_array()
+            
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+            frame_bgr = cv2.flip(frame_bgr, 1)
+            
+            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             faces = self.face_cascade.detectMultiScale(gray, 1.2, 5)
             
-            # logic for handling detection state
             if len(faces) > 0:
                 if not self.face_detected:
                     self.face_detected = True
@@ -427,26 +417,23 @@ class FaceScannerApp:
                 
                 if progress >= 1.0:
                     self.photo_taken = True
-                    self.root.after(0, lambda: self.capture_and_analyze(frame))
+                    self.root.after(0, lambda: self.capture_and_analyze(frame_bgr))
                     break
                     
-                ring_color = (0, 255, 136) # green implies good
+                ring_color = (0, 255, 136)
                 status_text = "Hold still..."
             else:
                 self.face_detected = False
                 self.detection_start_time = None
                 progress = 0
-                ring_color = (255, 68, 68) # red implies waiting
+                ring_color = (255, 68, 68)
                 status_text = "Searching for face..."
             
-            # update ui on main thread so it doesn't crash
             self.root.after(0, lambda text=status_text: self.update_status(text))
             
-            # prep image for display
-            img_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+            img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(img_rgb)
             
-            # round those corners
             pil_img = self.add_corners(pil_img, self.radius)
             
             # draw the ring/border
@@ -499,7 +486,7 @@ class FaceScannerApp:
     def capture_and_analyze(self, frame):
         self.update_status("Analyzing...")
 
-        cv2.imwrite("captured_face.jpg", frame) # actually save this
+        cv2.imwrite("captured_face.jpg", frame) 
         
         # freeze the video
         
@@ -587,14 +574,15 @@ class FaceScannerApp:
     def cancel_scan(self):
         self.running = False
 
-        if self.cap:
-            self.cap.release()
+        if self.picam2:
+            self.picam2.stop()
+            self.picam2 = None
         self.create_start_screen()
         
     def on_closing(self):
         self.running = False
-        if self.cap:
-            self.cap.release()
+        if self.picam2:
+            self.picam2.stop()
         try:
             if self.serial:
                 self.serial.close()
