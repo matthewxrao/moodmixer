@@ -5,3 +5,4 @@ tf-keras
 tensorflow
 numpy
 gpiozero
+pyserial

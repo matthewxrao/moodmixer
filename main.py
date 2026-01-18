@@ -9,7 +9,22 @@ import math
 import gpiozero as gz
 from matplotlib import text
 
-import pumps
+import serial
+import serial.tools.list_ports
+
+ARDUINO_PORT = "/dev/ttyACM0"   # change if needed: /dev/ttyUSB0
+ARDUINO_BAUD = 115200
+
+
+MOOD_ADVICE = {
+    "HAPPY":   "You’re riding a good wave. Share the energy—text someone you like and do one small thing you’ve been putting off.",
+    "SAD":     "Go easy on yourself today. Drink some water, get a little sunlight if you can, and do one comfort task—music, shower, or a quick walk.",
+    "ANGRY":   "Take 60 seconds to reset—slow breath in/out. Then channel it: move your body or write a quick “what I’m mad about” note.",
+    "FEAR":    "You’re in alert mode. Name 1 thing you can control right now, do it, then take a 2-minute grounding break (look around, feel your feet).",
+    "SURPRISE":"Pause and re-check what happened. If it’s good—enjoy it. If it’s stressful—slow down and get one more piece of info before acting.",
+    "DISGUST": "That reaction is real. Step away from the trigger and reset—fresh air, water, or switching tasks for a few minutes helps.",
+    "NEUTRAL": "You’re steady. Great time to do something productive—pick one simple task and knock it out clean."
+}
 
 class FaceScannerApp:
     def __init__(self, root):
@@ -31,8 +46,34 @@ class FaceScannerApp:
         
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         
-        self.create_start_screen()
+        self.serial = None
+        self.connect_arduino()
         
+        self.create_start_screen()
+    
+    # CONNECTING ARDUINO FOR INPUT
+    def connect_arduino(self):
+        # try to open serial port
+        try:
+            self.serial = serial.Serial(ARDUINO_PORT, ARDUINO_BAUD, timeout=1)
+            time.sleep(2)
+            print(f"Connected to Arduino on {ARDUINO_PORT}")
+        except serial.SerialException as e:
+            print(f"Error connecting to Arduino: {(e)}")
+            for p in serial.tools.list_ports.comports():
+                print(f" - {p.device}: {p.description}")
+    
+
+    # SENDING MESSAGES TO ARDUINO
+    def send_to_arduino(self, message):
+        if not self.serial:
+            raise RuntimeError("Arduino not connected")
+        
+        line = (message.strip() + "\n").encode('utf-8')
+        self.serial.write(line)
+        self.serial.flush()
+
+
     def create_start_screen(self):
         self._clear_window()
         
@@ -107,7 +148,7 @@ class FaceScannerApp:
         cancel_lbl.bind("<Button-1>", lambda e: self.cancel_scan())
     
 
-    def show_report_and_user_selection_screen(self, dominant_emotion):
+    def show_report_and_user_selection_screen(self, dominant, emotions):
         # check getting the emotions
         self._clear_window()
 
@@ -125,7 +166,7 @@ class FaceScannerApp:
 
         tk.Label(
             container,
-            text=dominant_emotion.upper(),
+            text=dominant.upper(),
             font=("Helvetica", 48, "bold"),
             bg="#0f0f12",
             fg="#ffffff",
@@ -133,19 +174,70 @@ class FaceScannerApp:
 
         # button to make drink
 
-        make_drink_btn = tk.Label(
+        advice = MOOD_ADVICE.get(dominant.upper(), MOOD_ADVICE["NEUTRAL"])
+
+        tk.Label(
             container,
+            text=advice,
+            font=("Helvetica", 14),
+            bg="#0f0f12",
+            fg="#aaaaaa",
+            wraplength=650,
+            justify="center"
+        ).pack(pady=(0, 20))
+
+        top = sorted(emotions.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        perc_frame = tk.Frame(container, bg="#0f0f12")
+        perc_frame.pack(pady=(0,25))
+
+        tk.Label(
+            perc_frame,
+            text="Emotion Confidence Levels:",
+            font=("Helvetica", 12, "bold"),
+            bg="#0f0f12",
+            fg="#666677"
+        ).pack(pady=(0,10))
+
+        for emotion, val in top:
+            tk.Label(
+                perc_frame,
+                text=f"{emotion.upper():<10}: {val:.1f}%",
+                font=("Helvetica", 12),
+                bg="#0f0f12",
+                fg="#aaaaaa"
+            ).pack()
+
+        btn_row = tk.Frame(container, bg="#0f0f12")
+        btn_row.pack(pady=(10, 0))
+
+        make_drink_btn = tk.Label(
+            btn_row,
             text="MAKE DRINK",
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica", 16, "bold"),
+            bg="#00ff88",
+            fg="#0f0f12",
+            padx=40,
+            pady=15,
+            cursor="hand2",
+        )
+
+        make_drink_btn.pack(side="left", padx=10)
+        make_drink_btn.bind("<Button-1>", lambda e: self.start_drink_flow(dominant))
+
+        again_btn = tk.Label(
+            btn_row,
+            text="SCAN AGAIN",
+            font=("Helvetica", 16, "bold"),
             bg="#ffffff",
             fg="#0f0f12",
             padx=40,
             pady=15,
-            cursor="hand2"
+            cursor="hand2",
         )
 
-        make_drink_btn.pack(pady=20)
-        make_drink_btn.bind("<Button-1>", lambda e: self.show_making_screen(dominant_emotion, "Sample Drink"))        
+        again_btn.pack(side="left", padx=10)
+        again_btn.bind("<Button-1>", lambda e: self.create_start_screen())
 
 
     def show_making_screen(self, emotion, drink_name):
@@ -156,7 +248,7 @@ class FaceScannerApp:
 
         tk.Label(
             container,
-            text="MOOD DETECTED",
+            text="DISPENSING",
             font=("Helvetica", 14),
             bg="#0f0f12",
             fg="#666677",
@@ -164,11 +256,11 @@ class FaceScannerApp:
 
         tk.Label(
             container,
-            text=emotion,
+            text=f"Mood: {emotion.upper()}",
             font=("Helvetica", 44, "bold"),
             bg="#0f0f12",
             fg="#00ff88",
-        ).pack(pady=(10, 5))
+        ).pack(pady=(5, 10))
 
         tk.Label(
             container,
@@ -176,7 +268,7 @@ class FaceScannerApp:
             font=("Helvetica", 18, "bold"),
             bg="#0f0f12",
             fg="#ffffff",
-        ).pack(pady=(5, 20))
+        ).pack(pady=(0, 20))
 
         self.status_label = tk.Label(
             container,
@@ -388,7 +480,6 @@ class FaceScannerApp:
             self.status_label.config(text=text)
 
     def capture_and_analyze(self, frame):
-        cv2.imwrite("captured_face.jpg", frame)
         self.update_status("Analyzing...")
 
         cv2.imwrite("captured_face.jpg", frame) # actually save this
@@ -430,7 +521,8 @@ class FaceScannerApp:
                 
                 # update ui to show we're done
                 dominant = sorted_emotions[0][0].upper()
-                self.root.after(0, lambda d=dominant: self.start_drink_flow(d))
+                self.root.after(0, lambda d=dominant, emo=emotions: self.show_report_and_user_selection_screen(d, emo))
+
                 
             except ImportError:
                 print("\nERROR: DeepFace not installed! Run `pip install deepface`\n")
@@ -440,103 +532,57 @@ class FaceScannerApp:
 
         threading.Thread(target=analyze, daemon=True).start()
     
-    def start_drink_flow(self, emotion_upper: str):
-        # choose drink 
+    def start_drink_flow(self, dominant: str):
 
-        recipe = pumps.RECIPES.get(emotion_upper, pumps.RECIPES.get("HAPPY"))
-        drink_name = recipe["name"]
-        steps = recipe["steps"]
+        if not self.serial:
+            self.update_status("Arduino not connected")
+            return
 
-        # report screen (show all the stats)
-        self.show_report_and_user_selection_screen(emotion_upper)
+        # choose drink
 
-        # button input for user to start drink making
+        dominant = dominant.upper()
+        drink_name = f"{dominant.title()} Mix"
+        self.last_drink_name = drink_name
 
-        self.show_making_screen(emotion_upper, drink_name)
-    
-        def status_cb(msg: str):
+        self.show_making_screen(dominant, drink_name)
+
+        def status(msg):  
             self.root.after(0, lambda: self.update_status(msg))
-    
-        def run_pumps():
+        
+        def do_serial():
             try:
-                pumps.run_recipe(steps, status=status_cb)
-                self.root.after(0, lambda: self.show_done_screen(emotion_upper, drink_name))
+                status("sending command to Arduino")
+                self.send_to_arduino(f"DISPENSE {dominant}")
 
+                status("dispensing...")
+                time.sleep(2)
+
+
+                status("Drink ready")
+                self.root.after(800, lambda: self.show_done_screen(dominant, drink_name))
+            
             except Exception as e:
-                print(f"Error running recipe: {str(e)}")
+                print(f"Serial error: {e}")
                 self.root.after(0, self.cancel_scan)
             
-        
-        threading.Thread(target=run_pumps, daemon=True).start()
-
-    def show_result(self, emotion):
-        self._clear_window()
-        
-        container = tk.Frame(self.root, bg="#0f0f12")
-        container.place(relx=0.5, rely=0.5, anchor="center")
-        
-        tk.Label(
-            container,
-            text="MOOD DETECTED",
-            font=("Helvetica", 14),
-            bg="#0f0f12",
-            fg="#666677"
-        ).pack(pady=10)
-        
-        tk.Label(
-            container,
-            text=emotion,
-            font=("Helvetica", 48, "bold"),
-            bg="#0f0f12",
-            fg="#00ff88"
-        ).pack(pady=20)
-        
-        tk.Label(
-            container,
-            text="Check terminal for full report",
-            font=("Helvetica", 12),
-            bg="#0f0f12",
-            fg="#444455"
-        ).pack(pady=30)
-        
-        # reset button
-        reset_btn = tk.Label(
-            container,
-            text="SCAN AGAIN",
-            font=("Helvetica", 14, "bold"),
-            bg="#ffffff",
-            fg="#0f0f12",
-            padx=40,
-            pady=15,
-            cursor="hand2"
-        )
-        reset_btn.pack(pady=20)
-        reset_btn.bind("<Button-1>", lambda e: self.create_start_screen())
+        threading.Thread(target=do_serial, daemon=True).start()
 
     def cancel_scan(self):
         self.running = False
-
-        try: 
-            pumps.stop_all_pumps()
-        except Exception as e:
-            print(f"Error stopping pumps: {str(e)}")
-            pass
 
         if self.cap:
             self.cap.release()
         self.create_start_screen()
         
     def on_closing(self):
-
-        try: 
-            pumps.stop_all_pumps()
-        except Exception as e:
-            print(f"Error stopping pumps: {str(e)}")
-            pass
-
         self.running = False
         if self.cap:
             self.cap.release()
+        try:
+            if self.serial:
+                self.serial.close()
+        except Exception:
+            pass
         self.root.destroy()
 
 if __name__ == "__main__":
