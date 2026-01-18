@@ -19,13 +19,13 @@ ARDUINO_BAUD = 115200
 
 
 MOOD_ADVICE = {
-    "HAPPY":   "You're riding a good wave. Share the energy—text someone you like and do one small thing you've been putting off.",
-    "SAD":     "Go easy on yourself today. Drink some water, get a little sunlight if you can, and do one comfort task—music, shower, or a quick walk.",
-    "ANGRY":   "Take 60 seconds to reset—slow breath in/out. Then channel it: move your body or write a quick "what I'm mad about" note.",
-    "FEAR":    "You're in alert mode. Name 1 thing you can control right now, do it, then take a 2-minute grounding break (look around, feel your feet).",
-    "SURPRISE":"Pause and re-check what happened. If it's good—enjoy it. If it's stressful—slow down and get one more piece of info before acting.",
-    "DISGUST": "That reaction is real. Step away from the trigger and reset—fresh air, water, or switching tasks for a few minutes helps.",
-    "NEUTRAL": "You're steady. Great time to do something productive—pick one simple task and knock it out clean."
+    "HAPPY":   '''You're riding a good wave. Share the energy—text someone you like and do one small thing you've been putting off.''',
+    "SAD":     '''Go easy on yourself today. Drink some water, get a little sunlight if you can, and do one comfort task—music, shower, or a quick walk.''',
+    "ANGRY":   '''Take 60 seconds to reset—slow breath in/out. Then channel it: move your body or write a quick "what I'm mad about" note.''',
+    "FEAR":    '''You're in alert mode. Name 1 thing you can control right now, do it, then take a 2-minute grounding break (look around, feel your feet).''',
+    "SURPRISE":'''Pause and re-check what happened. If it's good—enjoy it. If it's stressful—slow down and get one more piece of info before acting.''',
+    "DISGUST": '''That reaction is real. Step away from the trigger and reset—fresh air, water, or switching tasks for a few minutes helps.''',
+    "NEUTRAL": '''You're steady. Great time to do something productive—pick one simple task and knock it out clean.'''
 }
 
 class FaceScannerApp:
@@ -43,7 +43,7 @@ class FaceScannerApp:
         self.scan_progress = 0
         
         self.width = 640
-        self.height = 480
+        self.height = 380
         self.radius = 40  # how rounded the corners are
         
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -400,7 +400,7 @@ class FaceScannerApp:
         while self.running and not self.photo_taken:
             frame = self.picam2.capture_array()
             
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame_bgr = frame
             
             frame_bgr = cv2.flip(frame_bgr, 1)
             
@@ -415,8 +415,11 @@ class FaceScannerApp:
                 elapsed = time.time() - self.detection_start_time
                 progress = min(elapsed / 2.0, 1.0)
                 
-                if progress >= 1.0:
+                if progress >= 0.25:
                     self.photo_taken = True
+                    self.picam2.stop()
+                    self.picam2.close()
+                    self.picam2 = None
                     self.root.after(0, lambda: self.capture_and_analyze(frame_bgr))
                     break
                     
@@ -467,7 +470,7 @@ class FaceScannerApp:
             imgtk = ImageTk.PhotoImage(image=output_img)
             self.root.after(0, lambda i=imgtk: self.update_canvas(i))
             
-            time.sleep(0.01)
+            time.sleep(0.05)
 
     def update_canvas(self, imgtk):
         if not self.running: return
@@ -592,6 +595,8 @@ class FaceScannerApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.attributes('-fullscreen', True)
+    # root.overridedirect(True)
     app = FaceScannerApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
